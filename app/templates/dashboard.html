@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Tableau de Bord / لوحة القيادة</h2>
+    <div>
+        <button class="btn btn-outline-secondary me-2"><i class="fas fa-calendar"></i> Ce mois</button>
+        <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Exporter PDF</button>
+    </div>
+</div>
+
+<div class="row g-4 mb-5">
+    <div class="col-md-3">
+        <div class="card p-3 border-start border-primary border-4">
+            <div class="text-muted small">Revenus aujourd'hui</div>
+            <div class="h3 fw-bold" id="statRevenue">0 DA</div>
+            <div class="text-success small"><i class="fas fa-arrow-up"></i> +12%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 border-start border-success border-4">
+            <div class="text-muted small">Profit aujourd'hui</div>
+            <div class="h3 fw-bold" id="statProfit">0 DA</div>
+            <div class="text-success small"><i class="fas fa-arrow-up"></i> +5%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 border-start border-warning border-4">
+            <div class="text-muted small">Commandes aujourd'hui</div>
+            <div class="h3 fw-bold" id="statOrders">0</div>
+            <div class="text-danger small"><i class="fas fa-arrow-down"></i> -2%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 border-start border-info border-4">
+            <div class="text-muted small">Meilleur produit</div>
+            <div class="h3 fw-bold">Gâteau Choc</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-5">
+    <div class="col-lg-8">
+        <div class="card p-4 h-100">
+            <h5>Tendance des Profits (30 jours)</h5>
+            <canvas id="profitTrendChart"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card p-4 h-100">
+            <h5>Répartition des Coûts</h5>
+            <canvas id="costDistributionChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card p-4">
+    <h5>Commandes Récentes</h5>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Client</th>
+                    <th>Produit</th>
+                    <th>Total</th>
+                    <th>Statut</th>
+                </tr>
+            </thead>
+            <tbody id="recentOrdersTable">
+                <tr><td colspan="5" class="text-center">Chargement...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadStats() {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch('/api/stats/daily', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        document.getElementById('statRevenue').innerText = `${data.revenue} DA`;
+        document.getElementById('statProfit').innerText = `${data.profit} DA`;
+        document.getElementById('statOrders').innerText = data.orders_count;
+    }
+    loadStats();
+
+    async function loadRecentOrders() {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch('/api/orders', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const orders = await res.json();
+        const table = document.getElementById('recentOrdersTable');
+        if (orders.length === 0) {
+            table.innerHTML = '<tr><td colspan="5" class="text-center">Aucune commande.</td></tr>';
+            return;
+        }
+        table.innerHTML = orders.slice(0, 5).map(o => `
+            <tr>
+                <td>#${o.id}</td>
+                <td>${o.customer_name || 'Anonyme'}</td>
+                <td>Produit #${o.product_id}</td>
+                <td>${o.total_price} DA</td>
+                <td><span class="badge bg-info">${o.status}</span></td>
+            </tr>
+        `).join('');
+    }
+    loadRecentOrders();
+
+    const trendCtx = document.getElementById('profitTrendChart').getContext('2d');
+    new Chart(trendCtx, {
+        type: 'line',
+        data: {
+            labels: ['1 Jan', '5 Jan', '10 Jan', '15 Jan', '20 Jan', '25 Jan'],
+            datasets: [{
+                label: 'Profit (DA)',
+                data: [1200, 1900, 1500, 2100, 1800, 2400],
+                borderColor: '#667eea',
+                tension: 0.3,
+                fill: true,
+                backgroundColor: 'rgba(102, 126, 234, 0.1)'
+            }]
+        }
+    });
+
+    const distCtx = document.getElementById('costDistributionChart').getContext('2d');
+    new Chart(distCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ingrédients', 'Main d\'œuvre', 'Packaging'],
+            datasets: [{
+                data: [60, 25, 15],
+                backgroundColor: ['#667eea', '#764ba2', '#ffc107']
+            }]
+        }
+    });
+</script>
+{% endblock %}

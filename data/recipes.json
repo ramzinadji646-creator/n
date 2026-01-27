@@ -1,0 +1,52 @@
+{
+  "ingredients": [
+    {
+      "name": "Farine",
+      "price_per_pack": 100,
+      "pack_size": 1,
+      "unit": "kg"
+    },
+    {
+      "name": "Sucre",
+      "price_per_pack": 50,
+      "pack_size": 0.5,
+      "unit": "kg"
+    },
+    {
+      "name": "Œufs",
+      "price_per_pack": 240,
+      "pack_size": 12,
+      "unit": "pcs"
+    }
+  ],
+  "recipes": [
+    {
+      "product_name": "Gâteau Chocolat",
+      "ingredients": [
+        {"name": "Farine", "quantity": 0.5, "unit": "kg"},
+        {"name": "Sucre", "quantity": 0.2, "unit": "kg"},
+        {"name": "Œufs", "quantity": 4, "unit": "pcs"}
+      ],
+      "packaging_cost": 100,
+      "labor_hours": 1.5,
+      "selling_price": 3500
+    },
+    {
+      "product_name": "Tarte Citron",
+      "ingredients": [
+        {"name": "Farine", "quantity": 0.3, "unit": "kg"},
+        {"name": "Sucre", "quantity": 0.15, "unit": "kg"},
+        {"name": "Œufs", "quantity": 2, "unit": "pcs"}
+      ],
+      "packaging_cost": 80,
+      "labor_hours": 1.0,
+      "selling_price": 2500
+    }
+  ],
+  "parameters": {
+    "loss_rate": 0.05,
+    "hourly_rate": 1500,
+    "default_delivery": 500,
+    "fixed_costs_monthly": 21000
+  }
+}

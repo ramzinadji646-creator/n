@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Suivi des Commandes / متابعة الطلبات</h2>
+    <button class="btn btn-primary"><i class="fas fa-plus me-2"></i>Nouvelle Commande</button>
+</div>
+
+<div class="card p-4">
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Client</th>
+                    <th>Produit</th>
+                    <th>Quantité</th>
+                    <th>Total</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+                <tr>
+                    <td colspan="7" class="text-center">Chargement...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadOrders() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            document.getElementById('ordersTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Veuillez vous connecter pour voir les commandes.</td></tr>';
+            return;
+        }
+        const res = await fetch('/api/orders', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const orders = await res.json();
+        const tableBody = document.getElementById('ordersTableBody');
+
+        if (orders.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Aucune commande trouvée.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = orders.map(o => `
+            <tr>
+                <td>${new Date(o.created_at).toLocaleDateString()}</td>
+                <td>${o.customer_name || 'Anonyme'}</td>
+                <td>Produit #${o.product_id}</td>
+                <td>${o.quantity}</td>
+                <td>${o.total_price} DA</td>
+                <td><span class="badge bg-info">${o.status}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary"><i class="fas fa-eye"></i></button>
+                </td>
+            </tr>
+        `).join('');
+    }
+    loadOrders();
+</script>
+{% endblock %}
