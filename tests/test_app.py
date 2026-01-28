@@ -70,7 +70,11 @@ def test_recipes_api(client, admin_token):
     res = client.post('/api/ingredients', json={"name": "I1"}, headers={"Authorization": f"Bearer {admin_token}"})
     iid = res.get_json()['id']
     # Add recipe
-    res = client.post('/api/recipes', json={"name": "R1", "ingredients": [{"ingredient_id": iid, "quantity": 1}]}, headers={"Authorization": f"Bearer {admin_token}"})
+    res = client.post('/api/recipes', json={
+        "name": "R1",
+        "selling_price": 1000,
+        "ingredients": [{"ingredient_id": iid, "quantity": 1}]
+    }, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 201
     rid = res.get_json()['id']
     # Get recipe
@@ -92,19 +96,35 @@ def test_stats_and_export(client, admin_token):
     client.get('/api/export/recipes/excel')
 
 def test_orders_api(client, admin_token):
-    # Need product
-    from app.models import Recipe, Product
+    # Need product (Recipe)
+    from app.models import Recipe
     with client.application.app_context():
-        r = Recipe(name="R")
+        r = Recipe(name="R_Order_Test", selling_price=1000)
         db.session.add(r)
         db.session.commit()
-        p = Product(recipe_id=r.id, quantity_produced=10)
-        db.session.add(p)
-        db.session.commit()
-        pid = p.id
+        rid = r.id
 
-    res = client.post('/api/orders', json={"product_id": pid, "quantity": 1, "total_price": 100})
+    # POST
+    res = client.post('/api/orders', json={
+        "product_id": rid,
+        "quantity": 1,
+        "total_price": 1000,
+        "customer_name": "Test Client"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 201
+    oid = res.get_json()['id']
+
+    # GET
+    res = client.get('/api/orders')
+    assert res.status_code == 200
+
+    # PUT
+    res = client.put(f'/api/orders/{oid}', json={"status": "Completed"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+
+    # DELETE
+    res = client.delete(f'/api/orders/{oid}', headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
 
 def test_main_views(client):
     for route in ['/', '/dashboard', '/calculator', '/recipes', '/orders', '/login', '/register']:
@@ -124,7 +144,11 @@ def test_export_recipe_pdf_endpoint(client, admin_token):
     # Need a recipe
     res = client.post('/api/ingredients', json={"name": "I1"}, headers={"Authorization": f"Bearer {admin_token}"})
     iid = res.get_json()['id']
-    res = client.post('/api/recipes', json={"name": "R1", "ingredients": [{"ingredient_id": iid, "quantity": 1}]}, headers={"Authorization": f"Bearer {admin_token}"})
+    res = client.post('/api/recipes', json={
+        "name": "R1_PDF_Test",
+        "selling_price": 1000,
+        "ingredients": [{"ingredient_id": iid, "quantity": 1}]
+    }, headers={"Authorization": f"Bearer {admin_token}"})
     rid = res.get_json()['id']
 
     res = client.get(f'/api/export/recipe/{rid}/pdf')

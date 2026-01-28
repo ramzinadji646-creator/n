@@ -3,24 +3,30 @@ from datetime import datetime
 
 class Recipe(db.Model):
     __tablename__ = 'recipes'
+
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    labor_hours = db.Column(db.Float, default=0.0)
-    packaging_cost = db.Column(db.Float, default=0.0)
-    selling_price = db.Column(db.Float, default=0.0)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    ingredients_json = db.Column(db.JSON, nullable=True) # Renamed to avoid conflict with relationship
+    ingredient_count = db.Column(db.Integer, nullable=True)
+    material_cost = db.Column(db.Float, nullable=True)
+    labor_cost = db.Column(db.Float, nullable=True)
+    packaging_cost = db.Column(db.Float, nullable=True)
+    total_cost = db.Column(db.Float, nullable=True)
+    selling_price = db.Column(db.Float, nullable=False)
+    profit_per_unit = db.Column(db.Float, nullable=True)
+    profit_margin = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     ingredients = db.relationship('RecipeIngredient', backref='recipe', lazy=True, cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
-            "id": self.id,
-            "name": self.name,
-            "labor_hours": self.labor_hours,
-            "packaging_cost": self.packaging_cost,
-            "selling_price": self.selling_price,
-            "created_at": self.created_at.isoformat(),
-            "ingredients": [ri.to_dict() for ri in self.ingredients]
+            'id': self.id,
+            'name': self.name,
+            'ingredient_count': self.ingredient_count or 0,
+            'selling_price': self.selling_price,
+            'profit_margin': self.profit_margin or 0,
+            'ingredients': [ri.to_dict() for ri in self.ingredients]
         }
 
 class RecipeIngredient(db.Model):

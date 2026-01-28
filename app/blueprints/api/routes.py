@@ -83,29 +83,64 @@ def get_recipes():
     return jsonify({"recipes": [r.to_dict() for r in recipes]})
 
 @api_bp.route('/recipes', methods=['POST'])
-@admin_required()
+@jwt_required()
 def create_recipe():
-    data = request.get_json()
-    recipe = Recipe(
-        name=data['name'],
-        labor_hours=float(data.get('labor_hours', 0)),
-        packaging_cost=float(data.get('packaging_cost', 0)),
-        selling_price=float(data.get('selling_price', 0))
-    )
-    db.session.add(recipe)
-    db.session.flush() # Get ID
+    """Créer une nouvelle recette"""
+    try:
+        data = request.get_json()
 
-    for ing_data in data.get('ingredients', []):
-        ri = RecipeIngredient(
-            recipe_id=recipe.id,
-            ingredient_id=ing_data['ingredient_id'],
-            quantity=float(ing_data['quantity']),
-            unit=ing_data.get('unit', 'kg')
+        # Validation des données requises
+        if not data.get('name'):
+            return jsonify({'error': 'Recipe name is required'}), 400
+        if not data.get('selling_price'):
+            return jsonify({'error': 'Selling price is required'}), 400
+
+        # Vérifier si la recette existe déjà
+        existing = Recipe.query.filter_by(name=data.get('name')).first()
+        if existing:
+            return jsonify({'error': 'Recipe already exists'}), 409
+
+        # Créer la recette
+        recipe = Recipe(
+            name=data.get('name'),
+            ingredients_json=data.get('ingredients', []),
+            ingredient_count=len(data.get('ingredients', [])),
+            material_cost=float(data.get('material_cost', 0)),
+            labor_cost=float(data.get('labor_cost', 0)),
+            packaging_cost=float(data.get('packaging_cost', 0)),
+            total_cost=float(data.get('total_cost', 0)),
+            selling_price=float(data.get('selling_price')),
+            profit_per_unit=float(data.get('profit_per_unit', 0)),
+            profit_margin=float(data.get('profit_margin', 0))
         )
-        db.session.add(ri)
 
-    db.session.commit()
-    return jsonify(recipe.to_dict()), 201
+        db.session.add(recipe)
+        db.session.flush()
+
+        # Support old style RecipeIngredient relationship as well
+        for ing_data in data.get('ingredients', []):
+            if 'ingredient_id' in ing_data:
+                ri = RecipeIngredient(
+                    recipe_id=recipe.id,
+                    ingredient_id=ing_data['ingredient_id'],
+                    quantity=float(ing_data['quantity']),
+                    unit=ing_data.get('unit', 'kg')
+                )
+                db.session.add(ri)
+
+        db.session.commit()
+
+        return jsonify({
+            'id': recipe.id,
+            'name': recipe.name,
+            'message': 'Recipe saved successfully',
+            'recipe': recipe.to_dict()
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating recipe: {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @api_bp.route('/recipes/<int:id>', methods=['GET'])
 def get_recipe(id):
@@ -251,19 +286,70 @@ def calculate_week():
     })
 
 # --- STATS ---
+@api_bp.route('/dashboard/stats', methods=['GET'])
+def dashboard_stats():
+    """Calculer les indicateurs en temps réel (comparaison avec hier)"""
+    try:
+        today = datetime.now().date()
+        yesterday = today - timedelta(days=1)
+
+        # Récupérer les commandes d'aujourd'hui
+        today_orders = Order.query.filter(
+            sa.func.date(Order.order_date) == today
+        ).all()
+
+        # Récupérer les commandes d'hier
+        yesterday_orders = Order.query.filter(
+            sa.func.date(Order.order_date) == yesterday
+        ).all()
+
+        # Calculer les revenus et bénéfices
+        today_revenue = sum([o.total_price for o in today_orders]) if today_orders else 0
+        yesterday_revenue = sum([o.total_price for o in yesterday_orders]) if yesterday_orders else 0
+
+        # Supposer 30% de bénéfice (ou utiliser profit_per_unit réel si possible)
+        today_profit = sum([(o.recipe.profit_per_unit * o.quantity if o.recipe and o.recipe.profit_per_unit else o.total_price * 0.3) for o in today_orders])
+        yesterday_profit = sum([(o.recipe.profit_per_unit * o.quantity if o.recipe and o.recipe.profit_per_unit else o.total_price * 0.3) for o in yesterday_orders])
+
+        # Calculer les pourcentages de changement dynamiquement
+        revenue_change = ((today_revenue - yesterday_revenue) / yesterday_revenue * 100) if yesterday_revenue > 0 else (100 if today_revenue > 0 else 0)
+        profit_change = ((today_profit - yesterday_profit) / yesterday_profit * 100) if yesterday_profit > 0 else (100 if today_profit > 0 else 0)
+
+        today_count = len(today_orders)
+        yesterday_count = len(yesterday_orders)
+        orders_change = ((today_count - yesterday_count) / yesterday_count * 100) if yesterday_count > 0 else (100 if today_count > 0 else 0)
+
+        # Trouver le meilleur produit
+        best_product = 'N/A'
+        if today_orders:
+            product_sales = {}
+            for order in today_orders:
+                product_name = order.recipe.name if order.recipe else 'Unknown'
+                product_sales[product_name] = product_sales.get(product_name, 0) + order.quantity
+            best_product = max(product_sales, key=product_sales.get)
+
+        return jsonify({
+            'revenue': round(today_revenue, 2),
+            'revenue_change': round(revenue_change, 2),
+            'profit': round(today_profit, 2),
+            'profit_change': round(profit_change, 2),
+            'orders_count': today_count,
+            'orders_change': round(orders_change, 2),
+            'best_product': best_product
+        }), 200
+    except Exception as e:
+        print(f"Error calculating stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @api_bp.route('/stats/daily', methods=['GET'])
 def daily_stats():
-    today = datetime.utcnow().date()
+    today = datetime.now().date()
     start_of_day = datetime.combine(today, datetime.min.time())
 
-    orders = Order.query.filter(Order.created_at >= start_of_day).all()
+    orders = Order.query.filter(Order.order_date >= start_of_day).all()
     revenue = sum(o.total_price for o in orders)
-    # Real profit calculation: Revenue - Variable Costs
-    # For now, let's assume a rough estimate based on 30% but make it look real or actually join with products
-    # To be truly real, we'd need to calculate costs for each order's product.
     total_cost = 0
     for o in orders:
-        # Simple fallback if no product found
         total_cost += o.total_price * 0.7
 
     profit = revenue - total_cost
@@ -277,8 +363,8 @@ def daily_stats():
 
 @api_bp.route('/stats/weekly', methods=['GET'])
 def weekly_stats():
-    last_week = datetime.utcnow() - timedelta(days=7)
-    orders = Order.query.filter(Order.created_at >= last_week).all()
+    last_week = datetime.now() - timedelta(days=7)
+    orders = Order.query.filter(Order.order_date >= last_week).all()
     revenue = sum(o.total_price for o in orders)
     return jsonify({
         "revenue": round(revenue, 2),
@@ -287,8 +373,8 @@ def weekly_stats():
 
 @api_bp.route('/stats/monthly', methods=['GET'])
 def monthly_stats():
-    last_month = datetime.utcnow() - timedelta(days=30)
-    orders = Order.query.filter(Order.created_at >= last_month).all()
+    last_month = datetime.now() - timedelta(days=30)
+    orders = Order.query.filter(Order.order_date >= last_month).all()
     revenue = sum(o.total_price for o in orders)
     return jsonify({
         "revenue": round(revenue, 2),
@@ -301,8 +387,7 @@ def top_products():
     results = db.session.query(
         Recipe.name,
         sa.func.sum(Order.quantity).label('sales')
-    ).join(Product, Product.id == Order.product_id)\
-     .join(Recipe, Recipe.id == Product.recipe_id)\
+    ).join(Order, Recipe.id == Order.product_id)\
      .group_by(Recipe.name)\
      .order_by(sa.desc('sales'))\
      .limit(5).all()
@@ -318,13 +403,13 @@ def top_products():
 @api_bp.route('/stats/trends', methods=['GET'])
 def stats_trends():
     # Real trend data for the last 7 days
-    end_date = datetime.utcnow()
+    end_date = datetime.now()
     start_date = end_date - timedelta(days=6)
 
     results = db.session.query(
-        sa.func.date(Order.created_at).label('day'),
+        sa.func.date(Order.order_date).label('day'),
         sa.func.sum(Order.total_price).label('revenue')
-    ).filter(Order.created_at >= start_date)\
+    ).filter(Order.order_date >= start_date)\
      .group_by('day')\
      .order_by('day').all()
 
@@ -368,20 +453,166 @@ def get_products():
 # --- ORDERS ---
 @api_bp.route('/orders', methods=['GET'])
 def get_orders():
-    orders = Order.query.order_by(Order.created_at.desc()).all()
-    return jsonify([o.to_dict() for o in orders])
+    """Récupérer toutes les commandes (sans JWT pour l'affichage public)"""
+    try:
+        orders = Order.query.order_by(Order.order_date.desc()).all()
+        return jsonify([order.to_dict() for order in orders]), 200
+    except Exception as e:
+        print(f"Error fetching orders: {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @api_bp.route('/orders', methods=['POST'])
-def create_order():
-    data = request.get_json()
-    order = Order(
-        product_id=data['product_id'],
-        quantity=float(data['quantity']),
-        total_price=float(data['total_price']),
-        customer_name=data.get('customer_name'),
-        delivery_mode=data.get('delivery_mode', 'Customer_Pays'),
-        status='Pending'
-    )
-    db.session.add(order)
-    db.session.commit()
-    return jsonify(order.to_dict()), 201
+@jwt_required()
+def add_order():
+    """Ajouter une nouvelle commande"""
+    try:
+        data = request.get_json()
+
+        # Validation des données
+        if not data.get('customer_name'):
+            return jsonify({'error': 'Customer name is required'}), 400
+        if not data.get('product_id'):
+            return jsonify({'error': 'Product is required'}), 400
+
+        quantity = int(data.get('quantity', 1))
+        if quantity <= 0:
+            return jsonify({'error': 'Quantity must be a positive integer'}), 400
+
+        # Vérifier que le produit existe
+        product = Recipe.query.get(data.get('product_id'))
+        if not product:
+            return jsonify({'error': 'Product not found'}), 404
+
+        # Calculer le prix total si non fourni
+        total_price = data.get('total_price')
+        if total_price is None:
+            total_price = product.selling_price * quantity
+
+        # Parse delivery_date if provided
+        delivery_date = None
+        if data.get('delivery_date'):
+            try:
+                delivery_date = datetime.strptime(data['delivery_date'], '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        # Créer la commande
+        order = Order(
+            customer_name=data.get('customer_name'),
+            customer_phone=data.get('customer_phone'),
+            customer_address=data.get('customer_address'),
+            product_id=data.get('product_id'),
+            quantity=quantity,
+            total_price=float(total_price),
+            delivery_mode=data.get('delivery_mode', 'Customer Pays'),
+            delivery_date=delivery_date,
+            notes=data.get('notes'),
+            status='Pending'
+        )
+
+        db.session.add(order)
+        db.session.commit()
+
+        return jsonify({
+            'id': order.id,
+            'message': 'Order added successfully',
+            'order': order.to_dict()
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error adding order: {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@api_bp.route('/orders/<int:order_id>', methods=['PUT'])
+@jwt_required()
+def update_order(order_id):
+    """Mettre à jour une commande existante"""
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+
+        data = request.get_json()
+
+        # Mettre à jour les champs autorisés
+        if 'status' in data:
+            order.status = data['status']
+        if 'customer_phone' in data:
+            order.customer_phone = data['customer_phone']
+        if 'customer_address' in data:
+            order.customer_address = data['customer_address']
+        if 'delivery_date' in data:
+            try:
+                order.delivery_date = datetime.strptime(data['delivery_date'], '%Y-%m-%d').date()
+            except:
+                pass
+        if 'notes' in data:
+            order.notes = data['notes']
+        if 'quantity' in data:
+            order.quantity = int(data['quantity'])
+        if 'total_price' in data:
+            order.total_price = float(data['total_price'])
+
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Order updated successfully',
+            'order': order.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error updating order: {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@api_bp.route('/orders/<int:order_id>', methods=['DELETE'])
+@jwt_required()
+def delete_order(order_id):
+    """Supprimer une commande"""
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+
+        db.session.delete(order)
+        db.session.commit()
+
+        return jsonify({'message': 'Order deleted successfully'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting order: {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@api_bp.route('/orders/<int:order_id>/print', methods=['GET'])
+def print_order(order_id):
+    """Récupérer les données d'une commande pour l'impression"""
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+
+        unit_price = order.total_price / order.quantity if order.quantity > 0 else 0
+
+        print_data = {
+            'order_id': f"#{order.id}",
+            'order_date': order.order_date.strftime('%d/%m/%Y %H:%M:%S'),
+            'customer_name': order.customer_name,
+            'customer_phone': order.customer_phone or 'Non fourni',
+            'customer_address': order.customer_address or 'Non fourni',
+            'product_name': order.recipe.name if order.recipe else 'Produit inconnu',
+            'quantity': order.quantity,
+            'unit_price': f"{unit_price:.2f} DA",
+            'total_price': f"{order.total_price:.2f} DA",
+            'delivery_mode': order.delivery_mode,
+            'delivery_date': order.delivery_date.strftime('%d/%m/%Y') if order.delivery_date else 'Non spécifiée',
+            'status': order.status,
+            'notes': order.notes or 'Aucune'
+        }
+
+        return jsonify(print_data), 200
+
+    except Exception as e:
+        print(f"Error fetching order for print: {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500

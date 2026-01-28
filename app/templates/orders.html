@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Suivi des Commandes / متابعة الطلبات</h2>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addOrderModal">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#orderModal" onclick="resetForm()">
         <i class="fas fa-plus me-2"></i>Nouvelle Commande
     </button>
 </div>
@@ -31,42 +31,74 @@
     </div>
 </div>
 
-<!-- Add Order Modal -->
-<div class="modal fade" id="addOrderModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- Order Modal (Add/Edit) -->
+<div class="modal fade" id="orderModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-h5">Nouvelle Commande</h5>
+                <h5 class="modal-title" id="modalTitle">Nouvelle Commande</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="orderForm">
-                    <div class="mb-3">
-                        <label class="form-label">Client</label>
-                        <input type="text" class="form-control" id="customerName" required placeholder="Nom du client">
+                    <input type="hidden" id="orderId">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nom du Client</label>
+                            <input type="text" class="form-control" id="customerName" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Téléphone</label>
+                            <input type="text" class="form-control" id="customerPhone">
+                        </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Produit</label>
-                        <select class="form-select" id="productSelect" required onchange="updateTotalPrice()">
-                            <option value="">Sélectionner un produit...</option>
-                        </select>
+                        <label class="form-label">Adresse</label>
+                        <input type="text" class="form-control" id="customerAddress">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Produit / Recette</label>
+                            <select class="form-select" id="productSelect" required onchange="updateTotalPrice()">
+                                <option value="">Sélectionner...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Quantité</label>
+                            <input type="number" class="form-control" id="orderQuantity" value="1" min="1" required onchange="updateTotalPrice()">
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Mode Livraison</label>
+                            <select class="form-select" id="deliveryMode">
+                                <option value="Customer Pays">Client paye</option>
+                                <option value="We Pay">Nous payons</option>
+                                <option value="Free">Gratuit</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Date Livraison Prévue</label>
+                            <input type="date" class="form-control" id="deliveryDate">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Statut</label>
+                            <select class="form-select" id="orderStatus">
+                                <option value="Pending">En attente (Pending)</option>
+                                <option value="Processing">En préparation (Processing)</option>
+                                <option value="Completed">Terminé (Completed)</option>
+                                <option value="Cancelled">Annulé (Cancelled)</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Quantité</label>
-                        <input type="number" class="form-control" id="orderQuantity" value="1" min="1" required onchange="updateTotalPrice()">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Livraison</label>
-                        <select class="form-select" id="deliveryMode" required>
-                            <option value="Customer_Pays">Client paye (Customer Pays)</option>
-                            <option value="We_Pay">Nous payons (We Pay)</option>
-                            <option value="Free">Gratuit (Free)</option>
-                        </select>
+                        <label class="form-label">Notes / Instructions</label>
+                        <textarea class="form-control" id="orderNotes" rows="2"></textarea>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between">
-                        <strong>Total Estimé:</strong>
-                        <span id="displayTotalPrice">0 DA</span>
+                        <strong>Total:</strong>
+                        <h4 id="displayTotalPrice" class="text-primary">0 DA</h4>
                     </div>
                     <input type="hidden" id="calculatedTotalPrice" value="0">
                 </form>
@@ -78,81 +110,140 @@
         </div>
     </div>
 </div>
+
+<!-- Details Modal -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails de la Commande</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailsBody">
+                <!-- Filled by JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="printOrderFromDetails()">
+                    <i class="fas fa-print"></i> Imprimer
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden Print Area -->
+<div id="printArea" style="display:none;">
+    <div style="padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="text-align:center;">🎂 PÂTISSERIE ALGER</h2>
+        <h3 style="text-align:center;">BON DE COMMANDE <span id="printOrderId"></span></h3>
+        <hr>
+        <p><strong>Date:</strong> <span id="printDate"></span></p>
+        <p><strong>Client:</strong> <span id="printCustomer"></span></p>
+        <p><strong>Téléphone:</strong> <span id="printPhone"></span></p>
+        <p><strong>Adresse:</strong> <span id="printAddress"></span></p>
+        <hr>
+        <table style="width:100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #eee;">
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Produit</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qté</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Prix Unitaire</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;" id="printProductName"></td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;" id="printQuantity"></td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;" id="printUnitPrice"></td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;" id="printTotal"></td>
+                </tr>
+            </tbody>
+        </table>
+        <hr>
+        <p><strong>Mode Livraison:</strong> <span id="printDeliveryMode"></span></p>
+        <p><strong>Date Livraison:</strong> <span id="printDeliveryDate"></span></p>
+        <p><strong>Notes:</strong> <span id="printNotes"></span></p>
+        <br>
+        <p style="text-align:right;"><strong>Signature:</strong> _________________</p>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    let productPrices = {};
+    let recipes = [];
+    let currentOrderIdForPrint = null;
 
-    async function loadProducts() {
-        const res = await fetch('/api/products');
-        const products = await res.json();
+    async function loadRecipes() {
+        const res = await fetch('/api/recipes');
+        const data = await res.json();
+        recipes = data.recipes;
         const select = document.getElementById('productSelect');
-
-        products.forEach(p => {
+        select.innerHTML = '<option value="">Sélectionner...</option>';
+        recipes.forEach(r => {
             const option = document.createElement('option');
-            option.value = p.id;
-            // Assuming p.to_dict() returns recipe_name and possibly recipe details
-            // For simplicity, we'll fetch recipe details if needed or use a default price
-            option.textContent = p.recipe_name || `Produit #${p.id}`;
+            option.value = r.id;
+            option.textContent = r.name;
             select.appendChild(option);
-
-            // We need a way to get the price.
-            // Let's fetch recipes too or rely on product dict
-            productPrices[p.id] = 1000; // Default fallback
-        });
-
-        // Better: load recipes to get real prices
-        const resR = await fetch('/api/recipes');
-        const recipes = await resR.json();
-        const recipesMap = {};
-        recipes.recipes.forEach(r => recipesMap[r.id] = r.selling_price);
-
-        products.forEach(p => {
-            if (p.recipe_id && recipesMap[p.recipe_id]) {
-                productPrices[p.id] = recipesMap[p.recipe_id];
-            }
         });
     }
 
     function updateTotalPrice() {
-        const productId = document.getElementById('productSelect').value;
-        const qty = document.getElementById('orderQuantity').value;
-        const price = productPrices[productId] || 0;
+        const recipeId = document.getElementById('productSelect').value;
+        const qty = parseInt(document.getElementById('orderQuantity').value) || 0;
+        const recipe = recipes.find(r => r.id == recipeId);
+        const price = recipe ? recipe.selling_price : 0;
         const total = price * qty;
 
         document.getElementById('displayTotalPrice').textContent = `${total} DA`;
         document.getElementById('calculatedTotalPrice').value = total;
     }
 
+    function resetForm() {
+        document.getElementById('orderForm').reset();
+        document.getElementById('orderId').value = '';
+        document.getElementById('modalTitle').textContent = 'Nouvelle Commande';
+        document.getElementById('displayTotalPrice').textContent = '0 DA';
+        document.getElementById('orderStatus').value = 'Pending';
+    }
+
     async function submitOrder() {
+        const id = document.getElementById('orderId').value;
         const data = {
             customer_name: document.getElementById('customerName').value,
+            customer_phone: document.getElementById('customerPhone').value,
+            customer_address: document.getElementById('customerAddress').value,
             product_id: document.getElementById('productSelect').value,
-            quantity: document.getElementById('orderQuantity').value,
+            quantity: parseInt(document.getElementById('orderQuantity').value),
             delivery_mode: document.getElementById('deliveryMode').value,
-            total_price: document.getElementById('calculatedTotalPrice').value
+            delivery_date: document.getElementById('deliveryDate').value,
+            notes: document.getElementById('orderNotes').value,
+            status: document.getElementById('orderStatus').value,
+            total_price: parseFloat(document.getElementById('calculatedTotalPrice').value)
         };
 
-        if (!data.product_id || !data.customer_name) {
-            alert("Veuillez remplir tous les champs.");
-            return;
-        }
+        const token = localStorage.getItem('token');
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `/api/orders/${id}` : '/api/orders';
 
-        const res = await fetch('/api/orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+        const res = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(data)
         });
 
         if (res.ok) {
-            bootstrap.Modal.getInstance(document.getElementById('addOrderModal')).hide();
+            bootstrap.Modal.getInstance(document.getElementById('orderModal')).hide();
             loadOrders();
-            // Reset form
-            document.getElementById('orderForm').reset();
-            document.getElementById('displayTotalPrice').textContent = "0 DA";
         } else {
-            alert("Erreur lors de l'enregistrement.");
+            const err = await res.json();
+            alert(err.error || "Erreur lors de l'enregistrement.");
         }
     }
 
@@ -168,21 +259,122 @@
 
         tableBody.innerHTML = orders.map(o => `
             <tr>
-                <td>${new Date(o.created_at).toLocaleDateString()}</td>
-                <td>${o.customer_name || 'Anonyme'}</td>
-                <td>${o.product_name || 'Inconnu'}</td>
+                <td>${o.order_date}</td>
+                <td>${o.customer_name}</td>
+                <td>${o.product}</td>
                 <td>${o.quantity}</td>
                 <td>${o.total_price} DA</td>
-                <td><span class="badge bg-info">${o.status}</span></td>
+                <td><span class="badge ${getStatusBadgeClass(o.status)}">${o.status}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary"><i class="fas fa-eye"></i></button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewDetails(${o.id})"><i class="fas fa-eye"></i></button>
+                    <button class="btn btn-sm btn-outline-info" onclick="editOrder(${JSON.stringify(o).replace(/"/g, '&quot;')})"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${o.id})"><i class="fas fa-trash"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="printOrder(${o.id})"><i class="fas fa-print"></i></button>
                 </td>
             </tr>
         `).join('');
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-        loadProducts();
+    function getStatusBadgeClass(status) {
+        switch(status) {
+            case 'Pending': return 'bg-warning text-dark';
+            case 'Processing': return 'bg-info';
+            case 'Completed': return 'bg-success';
+            case 'Cancelled': return 'bg-danger';
+            default: return 'bg-secondary';
+        }
+    }
+
+    async function viewDetails(id) {
+        const res = await fetch(`/api/orders/${id}/print`);
+        const o = await res.json();
+        currentOrderIdForPrint = id;
+
+        document.getElementById('detailsBody').innerHTML = `
+            <div class="mb-2"><strong>Client:</strong> ${o.customer_name}</div>
+            <div class="mb-2"><strong>Téléphone:</strong> ${o.customer_phone}</div>
+            <div class="mb-2"><strong>Adresse:</strong> ${o.customer_address}</div>
+            <hr>
+            <div class="mb-2"><strong>Produit:</strong> ${o.product_name}</div>
+            <div class="mb-2"><strong>Quantité:</strong> ${o.quantity}</div>
+            <div class="mb-2"><strong>Prix Total:</strong> ${o.total_price}</div>
+            <hr>
+            <div class="mb-2"><strong>Mode Livraison:</strong> ${o.delivery_mode}</div>
+            <div class="mb-2"><strong>Date Livraison:</strong> ${o.delivery_date}</div>
+            <div class="mb-2"><strong>Statut:</strong> ${o.status}</div>
+            <div class="mb-2"><strong>Notes:</strong> ${o.notes}</div>
+        `;
+
+        new bootstrap.Modal(document.getElementById('detailsModal')).show();
+    }
+
+    function editOrder(o) {
+        resetForm();
+        document.getElementById('orderId').value = o.id;
+        document.getElementById('modalTitle').textContent = 'Modifier la Commande';
+        document.getElementById('customerName').value = o.customer_name;
+        document.getElementById('customerPhone').value = o.customer_phone == 'N/A' ? '' : o.customer_phone;
+        document.getElementById('customerAddress').value = o.customer_address == 'N/A' ? '' : o.customer_address;
+        document.getElementById('productSelect').value = o.product_id;
+        document.getElementById('orderQuantity').value = o.quantity;
+        document.getElementById('deliveryMode').value = o.delivery_mode;
+        document.getElementById('orderStatus').value = o.status;
+        document.getElementById('orderNotes').value = o.notes;
+
+        // Handle delivery date conversion if possible
+        if (o.delivery_date && o.delivery_date != 'N/A') {
+            const parts = o.delivery_date.split('/');
+            if (parts.length == 3) {
+                document.getElementById('deliveryDate').value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+        }
+
+        updateTotalPrice();
+        new bootstrap.Modal(document.getElementById('orderModal')).show();
+    }
+
+    async function deleteOrder(id) {
+        if (!confirm("Supprimer cette commande ?")) return;
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/orders/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) loadOrders();
+    }
+
+    async function printOrder(id) {
+        const res = await fetch(`/api/orders/${id}/print`);
+        const o = await res.json();
+
+        document.getElementById('printOrderId').textContent = o.order_id;
+        document.getElementById('printDate').textContent = o.order_date;
+        document.getElementById('printCustomer').textContent = o.customer_name;
+        document.getElementById('printPhone').textContent = o.customer_phone;
+        document.getElementById('printAddress').textContent = o.customer_address;
+        document.getElementById('printProductName').textContent = o.product_name;
+        document.getElementById('printQuantity').textContent = o.quantity;
+        document.getElementById('printUnitPrice').textContent = o.unit_price;
+        document.getElementById('printTotal').textContent = o.total_price;
+        document.getElementById('printDeliveryMode').textContent = o.delivery_mode;
+        document.getElementById('printDeliveryDate').textContent = o.delivery_date;
+        document.getElementById('printNotes').textContent = o.notes;
+
+        const printContent = document.getElementById('printArea').innerHTML;
+        const win = window.open('', '', 'height=600,width=800');
+        win.document.write('<html><head><title>Impression Commande</title></head><body>');
+        win.document.write(printContent);
+        win.document.write('</body></html>');
+        win.document.close();
+        win.print();
+    }
+
+    function printOrderFromDetails() {
+        if (currentOrderIdForPrint) printOrder(currentOrderIdForPrint);
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadRecipes();
         loadOrders();
     });
 </script>

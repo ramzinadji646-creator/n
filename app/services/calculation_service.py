@@ -29,13 +29,15 @@ class CalculationService:
 
         ingredient_cost_with_loss = total_ingredient_cost_raw * (1 + loss_rate)
 
-        labor = 0
+        labor_cost = 0
         if labor_hours is not None:
-            labor = safe_float(labor_hours)
+            labor_cost = safe_float(labor_hours) * safe_float(hourly_rate, default=1500.0)
         elif recipe is not None:
-            labor = recipe.labor_hours
-
-        labor_cost = labor * safe_float(hourly_rate, default=1500.0)
+            # Check for new labor_cost field first
+            if hasattr(recipe, 'labor_cost') and recipe.labor_cost is not None:
+                labor_cost = recipe.labor_cost
+            elif hasattr(recipe, 'labor_hours') and recipe.labor_hours is not None:
+                labor_cost = recipe.labor_hours * safe_float(hourly_rate, default=1500.0)
 
         pkg = 0
         if packaging_cost is not None:

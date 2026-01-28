@@ -90,7 +90,9 @@
             </div>
             <hr>
             <canvas id="resultChart"></canvas>
-            <button class="btn btn-outline-success w-100 mt-4"><i class="fas fa-save me-2"></i> Sauvegarder comme Recette</button>
+            <button class="btn btn-outline-success w-100 mt-4" id="saveRecipeBtn" onclick="saveRecipe()">
+                <i class="fas fa-save me-2"></i> Sauvegarder comme Recette
+            </button>
         </div>
         <div class="card p-4 h-100 d-flex align-items-center justify-content-center text-muted" id="emptyResults">
             <i class="fas fa-calculator display-4 mb-3"></i>
@@ -118,9 +120,9 @@
     }
 
     let myChart = null;
+    let lastCalculationData = null;
 
     async function calculate() {
-        // Collect data
         const payload = {
             product_name: document.getElementById('productName').value,
             labor_hours: document.getElementById('laborHours').value,
@@ -132,15 +134,14 @@
             is_summer: document.getElementById('isSummer').checked,
             ingredients: []
         };
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
         document.querySelectorAll('.ingredient-row').forEach(row => {
             const inputs = row.querySelectorAll('input');
             if(inputs[0].value) {
                 payload.ingredients.push({
                     name: inputs[0].value,
-                    quantity: inputs[1].value || 0,
-                    price_per_pack: inputs[2].value || 0,
+                    quantity: parseFloat(inputs[1].value) || 0,
+                    price_per_pack: parseFloat(inputs[2].value) || 0,
                     pack_size: 1
                 });
             }
@@ -148,16 +149,14 @@
 
         const response = await fetch('/api/calculate-product', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
         const data = await response.json();
 
         if (data.status === 'success') {
+            lastCalculationData = { ...data, name: payload.product_name, ingredients_input: payload.ingredients };
             document.getElementById('emptyResults').style.display = 'none';
             document.getElementById('resultsCard').style.display = 'block';
 
@@ -166,6 +165,45 @@
             document.getElementById('resMargin').innerText = data.profit_margin_percentage + '%';
 
             updateChart(data);
+        }
+    }
+
+    async function saveRecipe() {
+        if (!lastCalculationData) return;
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+            alert("Veuillez vous connecter pour sauvegarder une recette.");
+            return;
+        }
+
+        const payload = {
+            name: lastCalculationData.name || "Nouvelle Recette",
+            selling_price: lastCalculationData.selling_price,
+            ingredients: lastCalculationData.ingredients_input,
+            material_cost: lastCalculationData.ingredient_cost_with_loss,
+            labor_cost: lastCalculationData.labor_cost,
+            packaging_cost: lastCalculationData.packaging_cost,
+            total_cost: lastCalculationData.total_variable_cost,
+            profit_per_unit: lastCalculationData.profit_per_unit,
+            profit_margin: lastCalculationData.profit_margin_percentage
+        };
+
+        const res = await fetch('/api/recipes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            alert("Recette sauvegardée avec succès !");
+            window.location.href = "/recipes";
+        } else {
+            const err = await res.json();
+            alert(err.error || "Erreur lors de la sauvegarde.");
         }
     }
 
