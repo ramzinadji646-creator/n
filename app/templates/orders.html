@@ -3,7 +3,9 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Suivi des Commandes / متابعة الطلبات</h2>
-    <button class="btn btn-primary"><i class="fas fa-plus me-2"></i>Nouvelle Commande</button>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addOrderModal">
+        <i class="fas fa-plus me-2"></i>Nouvelle Commande
+    </button>
 </div>
 
 <div class="card p-4">
@@ -28,14 +30,134 @@
         </table>
     </div>
 </div>
+
+<!-- Add Order Modal -->
+<div class="modal fade" id="addOrderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-h5">Nouvelle Commande</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="orderForm">
+                    <div class="mb-3">
+                        <label class="form-label">Client</label>
+                        <input type="text" class="form-control" id="customerName" required placeholder="Nom du client">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Produit</label>
+                        <select class="form-select" id="productSelect" required onchange="updateTotalPrice()">
+                            <option value="">Sélectionner un produit...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Quantité</label>
+                        <input type="number" class="form-control" id="orderQuantity" value="1" min="1" required onchange="updateTotalPrice()">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Livraison</label>
+                        <select class="form-select" id="deliveryMode" required>
+                            <option value="Customer_Pays">Client paye (Customer Pays)</option>
+                            <option value="We_Pay">Nous payons (We Pay)</option>
+                            <option value="Free">Gratuit (Free)</option>
+                        </select>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <strong>Total Estimé:</strong>
+                        <span id="displayTotalPrice">0 DA</span>
+                    </div>
+                    <input type="hidden" id="calculatedTotalPrice" value="0">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="submitOrder()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    let productPrices = {};
+
+    async function loadProducts() {
+        const res = await fetch('/api/products');
+        const products = await res.json();
+        const select = document.getElementById('productSelect');
+
+        products.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.id;
+            // Assuming p.to_dict() returns recipe_name and possibly recipe details
+            // For simplicity, we'll fetch recipe details if needed or use a default price
+            option.textContent = p.recipe_name || `Produit #${p.id}`;
+            select.appendChild(option);
+
+            // We need a way to get the price.
+            // Let's fetch recipes too or rely on product dict
+            productPrices[p.id] = 1000; // Default fallback
+        });
+
+        // Better: load recipes to get real prices
+        const resR = await fetch('/api/recipes');
+        const recipes = await resR.json();
+        const recipesMap = {};
+        recipes.recipes.forEach(r => recipesMap[r.id] = r.selling_price);
+
+        products.forEach(p => {
+            if (p.recipe_id && recipesMap[p.recipe_id]) {
+                productPrices[p.id] = recipesMap[p.recipe_id];
+            }
+        });
+    }
+
+    function updateTotalPrice() {
+        const productId = document.getElementById('productSelect').value;
+        const qty = document.getElementById('orderQuantity').value;
+        const price = productPrices[productId] || 0;
+        const total = price * qty;
+
+        document.getElementById('displayTotalPrice').textContent = `${total} DA`;
+        document.getElementById('calculatedTotalPrice').value = total;
+    }
+
+    async function submitOrder() {
+        const data = {
+            customer_name: document.getElementById('customerName').value,
+            product_id: document.getElementById('productSelect').value,
+            quantity: document.getElementById('orderQuantity').value,
+            delivery_mode: document.getElementById('deliveryMode').value,
+            total_price: document.getElementById('calculatedTotalPrice').value
+        };
+
+        if (!data.product_id || !data.customer_name) {
+            alert("Veuillez remplir tous les champs.");
+            return;
+        }
+
+        const res = await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addOrderModal')).hide();
+            loadOrders();
+            // Reset form
+            document.getElementById('orderForm').reset();
+            document.getElementById('displayTotalPrice').textContent = "0 DA";
+        } else {
+            alert("Erreur lors de l'enregistrement.");
+        }
+    }
+
     async function loadOrders() {
-        const token = localStorage.getItem('token');
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const res = await fetch('/api/orders', { headers });
+        const res = await fetch('/api/orders');
         const orders = await res.json();
         const tableBody = document.getElementById('ordersTableBody');
 
@@ -48,7 +170,7 @@
             <tr>
                 <td>${new Date(o.created_at).toLocaleDateString()}</td>
                 <td>${o.customer_name || 'Anonyme'}</td>
-                <td>Produit #${o.product_id}</td>
+                <td>${o.product_name || 'Inconnu'}</td>
                 <td>${o.quantity}</td>
                 <td>${o.total_price} DA</td>
                 <td><span class="badge bg-info">${o.status}</span></td>
@@ -58,6 +180,10 @@
             </tr>
         `).join('');
     }
-    loadOrders();
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadProducts();
+        loadOrders();
+    });
 </script>
 {% endblock %}

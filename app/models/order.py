@@ -18,6 +18,7 @@ class Order(db.Model):
         return {
             "id": self.id,
             "product_id": self.product_id,
+            "product_name": self.product.recipe.name if self.product and self.product.recipe else f"Produit #{self.product_id}",
             "quantity": self.quantity,
             "total_price": self.total_price,
             "created_at": self.created_at.isoformat(),

@@ -359,6 +359,12 @@ def export_recipe_pdf(id):
     output = ReportService.generate_product_report(recipe.to_dict(), calc)
     return send_file(output, as_attachment=True, download_name=f"recipe_{id}.pdf")
 
+# --- PRODUCTS ---
+@api_bp.route('/products', methods=['GET'])
+def get_products():
+    products = Product.query.all()
+    return jsonify([p.to_dict() for p in products])
+
 # --- ORDERS ---
 @api_bp.route('/orders', methods=['GET'])
 def get_orders():
