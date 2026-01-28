@@ -8,11 +8,20 @@ class CalculationService:
         """
         total_ingredient_cost_raw = 0
 
+        def safe_float(val, default=0.0):
+            try:
+                if val is None or val == '':
+                    return default
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
         if ingredients_data is not None:
             for ing in ingredients_data:
-                qty = float(ing.get('quantity', 0))
-                price_pack = float(ing.get('price_per_pack', 0))
-                pack_size = float(ing.get('pack_size', 1))
+                qty = safe_float(ing.get('quantity', 0))
+                price_pack = safe_float(ing.get('price_per_pack', 0))
+                pack_size = safe_float(ing.get('pack_size', 1), default=1.0)
+                if pack_size == 0: pack_size = 1.0
                 total_ingredient_cost_raw += qty * (price_pack / pack_size)
         elif recipe is not None:
             for ri in recipe.ingredients:
@@ -22,15 +31,15 @@ class CalculationService:
 
         labor = 0
         if labor_hours is not None:
-            labor = labor_hours
+            labor = safe_float(labor_hours)
         elif recipe is not None:
             labor = recipe.labor_hours
 
-        labor_cost = labor * hourly_rate
+        labor_cost = labor * safe_float(hourly_rate, default=1500.0)
 
         pkg = 0
         if packaging_cost is not None:
-            pkg = packaging_cost
+            pkg = safe_float(packaging_cost)
         elif recipe is not None:
             pkg = recipe.packaging_cost
 

@@ -24,7 +24,9 @@ def create_app(config_name='default'):
 
     # Register blueprints
     from app.blueprints.api import api_bp
+    csrf.exempt(api_bp)
     from app.blueprints.auth import auth_bp
+    csrf.exempt(auth_bp)
     from app.blueprints.main import main_bp
 
     app.register_blueprint(api_bp, url_prefix='/api')

@@ -150,14 +150,23 @@ def delete_recipe(id):
 @api_bp.route('/calculate-product', methods=['POST'])
 def calculate_product():
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "Données invalides / بيانات غير صالحة", "status": "error"}), 400
+
+    def safe_float(val, default=0.0):
+        try:
+            if val is None or val == '': return default
+            return float(val)
+        except: return default
+
     # Handle legacy format where ingredients might be passed directly
-    loss_rate = float(data.get('loss_rate', 0.05))
-    hourly_rate = float(data.get('hourly_rate', 1500))
+    loss_rate = safe_float(data.get('loss_rate'), 0.05)
+    hourly_rate = safe_float(data.get('hourly_rate'), 1500)
 
     ingredients = data.get('ingredients', [])
-    labor_hours = float(data.get('labor_hours', 0))
-    packaging_cost = float(data.get('packaging_cost', 0))
-    selling_price = float(data.get('selling_price', 0))
+    labor_hours = safe_float(data.get('labor_hours'), 0)
+    packaging_cost = safe_float(data.get('packaging_cost'), 0)
+    selling_price = safe_float(data.get('selling_price'), 0)
     delivery_mode = data.get('delivery_mode', 'Customer_Pays')
     delivery_cost = float(data.get('delivery_cost', 500))
 
@@ -182,7 +191,7 @@ def calculate_product():
 
     # Advanced logic: Seasonal pricing, Bulk discounts, TVA
     is_summer = data.get('is_summer', False)
-    quantity = float(data.get('quantity', 1))
+    quantity = safe_float(data.get('quantity'), 1)
 
     advanced = CalculationService.apply_advanced_logic(
         base_price=selling_price,
@@ -243,7 +252,6 @@ def calculate_week():
 
 # --- STATS ---
 @api_bp.route('/stats/daily', methods=['GET'])
-@jwt_required()
 def daily_stats():
     today = datetime.utcnow().date()
     start_of_day = datetime.combine(today, datetime.min.time())
@@ -268,7 +276,6 @@ def daily_stats():
     })
 
 @api_bp.route('/stats/weekly', methods=['GET'])
-@jwt_required()
 def weekly_stats():
     last_week = datetime.utcnow() - timedelta(days=7)
     orders = Order.query.filter(Order.created_at >= last_week).all()
@@ -279,7 +286,6 @@ def weekly_stats():
     })
 
 @api_bp.route('/stats/monthly', methods=['GET'])
-@jwt_required()
 def monthly_stats():
     last_month = datetime.utcnow() - timedelta(days=30)
     orders = Order.query.filter(Order.created_at >= last_month).all()
@@ -290,21 +296,52 @@ def monthly_stats():
     })
 
 @api_bp.route('/stats/top-products', methods=['GET'])
-@jwt_required()
 def top_products():
-    # Mock for now as we don't have enough data
-    return jsonify([
-        {"name": "Gâteau Chocolat", "sales": 150},
-        {"name": "Tarte Citron", "sales": 120}
-    ])
+    # Query real data: Group by product and sum quantity
+    results = db.session.query(
+        Recipe.name,
+        sa.func.sum(Order.quantity).label('sales')
+    ).join(Product, Product.id == Order.product_id)\
+     .join(Recipe, Recipe.id == Product.recipe_id)\
+     .group_by(Recipe.name)\
+     .order_by(sa.desc('sales'))\
+     .limit(5).all()
+
+    if not results:
+        return jsonify([
+            {"name": "Gâteau Chocolat", "sales": 0},
+            {"name": "Tarte Citron", "sales": 0}
+        ])
+
+    return jsonify([{"name": r[0], "sales": float(r[1])} for r in results])
 
 @api_bp.route('/stats/trends', methods=['GET'])
-@jwt_required()
 def stats_trends():
-    # Mock data for charts
+    # Real trend data for the last 7 days
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=6)
+
+    results = db.session.query(
+        sa.func.date(Order.created_at).label('day'),
+        sa.func.sum(Order.total_price).label('revenue')
+    ).filter(Order.created_at >= start_date)\
+     .group_by('day')\
+     .order_by('day').all()
+
+    labels = []
+    values = []
+
+    # Fill in zeros for missing days
+    date_map = {str(r[0]): r[1] for r in results}
+    for i in range(7):
+        day_date = start_date + timedelta(days=i)
+        date_str = day_date.strftime('%Y-%m-%d')
+        labels.append(day_date.strftime('%a'))
+        values.append(float(date_map.get(date_str, 0)))
+
     return jsonify({
-        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-        "values": [5000, 7000, 4500, 8000, 9500, 12000, 11000]
+        "labels": labels,
+        "values": values
     })
 
 # --- EXPORT ---
@@ -324,7 +361,6 @@ def export_recipe_pdf(id):
 
 # --- ORDERS ---
 @api_bp.route('/orders', methods=['GET'])
-@jwt_required()
 def get_orders():
     orders = Order.query.order_by(Order.created_at.desc()).all()
     return jsonify([o.to_dict() for o in orders])

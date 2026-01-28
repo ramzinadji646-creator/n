@@ -79,10 +79,8 @@
 <script>
     async function loadStats() {
         const token = localStorage.getItem('token');
-        if (!token) return;
-        const res = await fetch('/api/stats/daily', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch('/api/stats/daily', { headers });
         const data = await res.json();
         document.getElementById('statRevenue').innerText = `${data.revenue} DA`;
         document.getElementById('statProfit').innerText = `${data.profit} DA`;
@@ -92,10 +90,8 @@
 
     async function loadRecentOrders() {
         const token = localStorage.getItem('token');
-        if (!token) return;
-        const res = await fetch('/api/orders', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch('/api/orders', { headers });
         const orders = await res.json();
         const table = document.getElementById('recentOrdersTable');
         if (orders.length === 0) {
@@ -114,32 +110,42 @@
     }
     loadRecentOrders();
 
-    const trendCtx = document.getElementById('profitTrendChart').getContext('2d');
-    new Chart(trendCtx, {
-        type: 'line',
-        data: {
-            labels: ['1 Jan', '5 Jan', '10 Jan', '15 Jan', '20 Jan', '25 Jan'],
-            datasets: [{
-                label: 'Profit (DA)',
-                data: [1200, 1900, 1500, 2100, 1800, 2400],
-                borderColor: '#667eea',
-                tension: 0.3,
-                fill: true,
-                backgroundColor: 'rgba(102, 126, 234, 0.1)'
-            }]
-        }
-    });
+    async function loadTrends() {
+        const res = await fetch('/api/stats/trends');
+        const data = await res.json();
+        const trendCtx = document.getElementById('profitTrendChart').getContext('2d');
+        new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Revenus (DA)',
+                    data: data.values,
+                    borderColor: '#667eea',
+                    tension: 0.3,
+                    fill: true,
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)'
+                }]
+            }
+        });
+    }
+    loadTrends();
 
-    const distCtx = document.getElementById('costDistributionChart').getContext('2d');
-    new Chart(distCtx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Ingrédients', 'Main d\'œuvre', 'Packaging'],
-            datasets: [{
-                data: [60, 25, 15],
-                backgroundColor: ['#667eea', '#764ba2', '#ffc107']
-            }]
-        }
-    });
+    async function loadCostDistribution() {
+        const res = await fetch('/api/stats/top-products');
+        const data = await res.json();
+        const distCtx = document.getElementById('costDistributionChart').getContext('2d');
+        new Chart(distCtx, {
+            type: 'doughnut',
+            data: {
+                labels: data.map(d => d.name),
+                datasets: [{
+                    data: data.map(d => d.sales),
+                    backgroundColor: ['#667eea', '#764ba2', '#ffc107', '#28a745', '#dc3545']
+                }]
+            }
+        });
+    }
+    loadCostDistribution();
 </script>
 {% endblock %}

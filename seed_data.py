@@ -1,6 +1,6 @@
 from app import create_app
 from app.extensions import db
-from app.models import Ingredient, Recipe, RecipeIngredient, User
+from app.models import Ingredient, Recipe, RecipeIngredient, User, Product, Order
 
 def seed():
     app = create_app()
@@ -92,7 +92,31 @@ def seed():
                     db.session.add(ri)
 
         db.session.commit()
-        print("Database seeded!")
+
+        # Seed Products and Orders
+        from datetime import datetime, timedelta
+        recipes = Recipe.query.all()
+        for r in recipes:
+            p = Product.query.filter_by(recipe_id=r.id).first()
+            if not p:
+                p = Product(recipe_id=r.id, quantity_produced=100)
+                db.session.add(p)
+                db.session.flush()
+
+            # Add some orders for this product
+            if not Order.query.filter_by(product_id=p.id).first():
+                for i in range(5):
+                    o = Order(
+                        product_id=p.id,
+                        quantity=2,
+                        total_price=r.selling_price * 2,
+                        customer_name=f"Client {i}",
+                        created_at=datetime.utcnow() - timedelta(days=i)
+                    )
+                    db.session.add(o)
+
+        db.session.commit()
+        print("Database seeded with orders!")
 
 if __name__ == '__main__':
     seed()

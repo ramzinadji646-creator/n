@@ -34,13 +34,8 @@
 <script>
     async function loadOrders() {
         const token = localStorage.getItem('token');
-        if (!token) {
-            document.getElementById('ordersTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Veuillez vous connecter pour voir les commandes.</td></tr>';
-            return;
-        }
-        const res = await fetch('/api/orders', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch('/api/orders', { headers });
         const orders = await res.json();
         const tableBody = document.getElementById('ordersTableBody');
 
