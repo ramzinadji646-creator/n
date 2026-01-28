@@ -79,47 +79,58 @@
 {% block extra_js %}
 <script>
     async function loadStats() {
-        const res = await fetch('/api/dashboard/stats');
-        const data = await res.json();
+        try {
+            const res = await fetch('/api/dashboard/stats');
+            const data = await res.json();
 
-        document.getElementById('statRevenue').innerText = `${data.revenue} DA`;
-        document.getElementById('statProfit').innerText = `${data.profit} DA`;
-        document.getElementById('statOrders').innerText = data.orders_count;
-        document.getElementById('statBestProduct').innerText = data.best_product;
+            document.getElementById('statRevenue').innerText = `${data.revenue_today.toLocaleString()} DA`;
+            document.getElementById('statProfit').innerText = `${data.profit_today.toLocaleString()} DA`;
+            document.getElementById('statOrders').innerText = data.orders_today;
+            document.getElementById('statBestProduct').innerText = data.best_product;
 
-        updateChangeBadge('revenueChange', data.revenue_change);
-        updateChangeBadge('profitChange', data.profit_change);
-        updateChangeBadge('ordersChange', data.orders_change);
+            const revChange = calculateChange(data.revenue_today, data.revenue_yesterday);
+            const profChange = calculateChange(data.profit_today, data.profit_yesterday);
+            const ordChange = calculateChange(data.orders_today, data.orders_yesterday);
+
+            updateChangeBadge('revenueChange', revChange);
+            updateChangeBadge('profitChange', profChange);
+            updateChangeBadge('ordersChange', ordChange);
+        } catch (e) { console.error("Error loading stats", e); }
+    }
+
+    function calculateChange(today, yesterday) {
+        if (yesterday === 0) return today > 0 ? 100 : 0;
+        return ((today - yesterday) / yesterday) * 100;
     }
 
     function updateChangeBadge(elementId, change) {
         const el = document.getElementById(elementId);
         const icon = change >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
         const color = change >= 0 ? 'text-success' : 'text-danger';
-        el.className = `${color} small`;
-        el.innerHTML = `<i class="fas ${icon}"></i> ${Math.abs(change)}% vs hier`;
+        el.className = `${color} small fw-bold`;
+        el.innerHTML = `<i class="fas ${icon} me-1"></i> ${Math.abs(change).toFixed(1)}% vs hier`;
     }
 
-    loadStats();
-
     async function loadRecentOrders() {
-        const res = await fetch('/api/orders');
-        const orders = await res.json();
-        const table = document.getElementById('recentOrdersTable');
-        if (orders.length === 0) {
-            table.innerHTML = '<tr><td colspan="6" class="text-center">Aucune commande.</td></tr>';
-            return;
-        }
-        table.innerHTML = orders.slice(0, 5).map(o => `
-            <tr>
-                <td>#${o.id}</td>
-                <td>${o.order_date}</td>
-                <td>${o.customer_name || 'Anonyme'}</td>
-                <td>${o.product}</td>
-                <td>${o.total_price} DA</td>
-                <td><span class="badge ${getStatusBadgeClass(o.status)}">${o.status}</span></td>
-            </tr>
-        `).join('');
+        try {
+            const res = await fetch('/api/dashboard/recent-orders');
+            const data = await res.json();
+            const table = document.getElementById('recentOrdersTable');
+            if (!data.orders || data.orders.length === 0) {
+                table.innerHTML = '<tr><td colspan="6" class="text-center">Aucune commande récente.</td></tr>';
+                return;
+            }
+            table.innerHTML = data.orders.map(o => `
+                <tr>
+                    <td>#${o.id}</td>
+                    <td>${o.date}</td>
+                    <td>${o.client}</td>
+                    <td>${o.product}</td>
+                    <td>${o.total.toLocaleString()} DA</td>
+                    <td><span class="badge ${getStatusBadgeClass(o.status)}">${o.status}</span></td>
+                </tr>
+            `).join('');
+        } catch (e) { console.error("Error loading orders", e); }
     }
 
     function getStatusBadgeClass(status) {
@@ -132,44 +143,47 @@
         }
     }
 
-    loadRecentOrders();
+    async function loadCharts() {
+        try {
+            // Revenue Trend
+            const trendRes = await fetch('/api/dashboard/revenue-trend');
+            const trendData = await trendRes.json();
+            new Chart(document.getElementById('profitTrendChart'), {
+                type: 'line',
+                data: {
+                    labels: trendData.labels,
+                    datasets: [{
+                        label: 'Revenus (DA)',
+                        data: trendData.data,
+                        borderColor: '#4e73df',
+                        backgroundColor: 'rgba(78, 115, 223, 0.05)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                }
+            });
 
-    async function loadTrends() {
-        const res = await fetch('/api/stats/trends');
-        const data = await res.json();
-        const trendCtx = document.getElementById('profitTrendChart').getContext('2d');
-        new Chart(trendCtx, {
-            type: 'line',
-            data: {
-                labels: data.labels,
-                datasets: [{
-                    label: 'Revenus (DA)',
-                    data: data.values,
-                    borderColor: '#667eea',
-                    tension: 0.3,
-                    fill: true,
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)'
-                }]
-            }
-        });
+            // Top Products
+            const topRes = await fetch('/api/dashboard/top-products');
+            const topData = await topRes.json();
+            new Chart(document.getElementById('costDistributionChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: topData.labels,
+                    datasets: [{
+                        data: topData.data,
+                        backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b']
+                    }]
+                },
+                options: { cutout: '70%' }
+            });
+        } catch (e) { console.error("Error loading charts", e); }
     }
-    loadTrends();
 
-    async function loadCostDistribution() {
-        const res = await fetch('/api/stats/top-products');
-        const data = await res.json();
-        const distCtx = document.getElementById('costDistributionChart').getContext('2d');
-        new Chart(distCtx, {
-            type: 'doughnut',
-            data: {
-                labels: data.map(d => d.name),
-                datasets: [{
-                    data: data.map(d => d.sales),
-                    backgroundColor: ['#667eea', '#764ba2', '#ffc107', '#28a745', '#dc3545']
-                }]
-            }
-        });
-    }
-    loadCostDistribution();
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadRecentOrders();
+        loadCharts();
+    });
 </script>
 {% endblock %}

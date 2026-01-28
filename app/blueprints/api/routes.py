@@ -82,6 +82,17 @@ def get_recipes():
     recipes = recipes_query.all()
     return jsonify({"recipes": [r.to_dict() for r in recipes]})
 
+@api_bp.route('/recipes/<int:recipe_id>', methods=['GET'])
+def get_recipe(recipe_id):
+    """Récupérer les détails d'une recette"""
+    try:
+        recipe = Recipe.query.get(recipe_id)
+        if not recipe:
+            return jsonify({'error': 'Recipe not found'}), 404
+        return jsonify({'recipe': recipe.to_dict()}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @api_bp.route('/recipes', methods=['POST'])
 @jwt_required()
 def create_recipe():
@@ -143,10 +154,6 @@ def create_recipe():
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @api_bp.route('/recipes/<int:id>', methods=['GET'])
-def get_recipe(id):
-    recipe = Recipe.query.get_or_404(id)
-    return jsonify(recipe.to_dict())
-
 @api_bp.route('/recipes/<int:id>', methods=['PUT'])
 @admin_required()
 def update_recipe(id):
@@ -154,9 +161,9 @@ def update_recipe(id):
     data = request.get_json()
 
     recipe.name = data.get('name', recipe.name)
-    recipe.labor_hours = float(data.get('labor_hours', recipe.labor_hours))
-    recipe.packaging_cost = float(data.get('packaging_cost', recipe.packaging_cost))
-    recipe.selling_price = float(data.get('selling_price', recipe.selling_price))
+    recipe.labor_cost = float(data.get('labor_cost', recipe.labor_cost or 0))
+    recipe.packaging_cost = float(data.get('packaging_cost', recipe.packaging_cost or 0))
+    recipe.selling_price = float(data.get('selling_price', recipe.selling_price or 0))
 
     if 'ingredients' in data:
         # Clear existing ingredients
@@ -288,57 +295,94 @@ def calculate_week():
 # --- STATS ---
 @api_bp.route('/dashboard/stats', methods=['GET'])
 def dashboard_stats():
-    """Calculer les indicateurs en temps réel (comparaison avec hier)"""
+    """Calculer les indicateurs en temps réel (comparaison avec hier) pour JS"""
     try:
         today = datetime.now().date()
         yesterday = today - timedelta(days=1)
 
-        # Récupérer les commandes d'aujourd'hui
-        today_orders = Order.query.filter(
-            sa.func.date(Order.order_date) == today
-        ).all()
+        today_orders = Order.query.filter(sa.func.date(Order.order_date) == today).all()
+        yesterday_orders = Order.query.filter(sa.func.date(Order.order_date) == yesterday).all()
 
-        # Récupérer les commandes d'hier
-        yesterday_orders = Order.query.filter(
-            sa.func.date(Order.order_date) == yesterday
-        ).all()
+        revenue_today = sum([o.total_price for o in today_orders])
+        revenue_yesterday = sum([o.total_price for o in yesterday_orders])
 
-        # Calculer les revenus et bénéfices
-        today_revenue = sum([o.total_price for o in today_orders]) if today_orders else 0
-        yesterday_revenue = sum([o.total_price for o in yesterday_orders]) if yesterday_orders else 0
+        profit_today = sum([(o.recipe.profit_per_unit * o.quantity if o.recipe and o.recipe.profit_per_unit else o.total_price * 0.3) for o in today_orders])
+        profit_yesterday = sum([(o.recipe.profit_per_unit * o.quantity if o.recipe and o.recipe.profit_per_unit else o.total_price * 0.3) for o in yesterday_orders])
 
-        # Supposer 30% de bénéfice (ou utiliser profit_per_unit réel si possible)
-        today_profit = sum([(o.recipe.profit_per_unit * o.quantity if o.recipe and o.recipe.profit_per_unit else o.total_price * 0.3) for o in today_orders])
-        yesterday_profit = sum([(o.recipe.profit_per_unit * o.quantity if o.recipe and o.recipe.profit_per_unit else o.total_price * 0.3) for o in yesterday_orders])
-
-        # Calculer les pourcentages de changement dynamiquement
-        revenue_change = ((today_revenue - yesterday_revenue) / yesterday_revenue * 100) if yesterday_revenue > 0 else (100 if today_revenue > 0 else 0)
-        profit_change = ((today_profit - yesterday_profit) / yesterday_profit * 100) if yesterday_profit > 0 else (100 if today_profit > 0 else 0)
-
-        today_count = len(today_orders)
-        yesterday_count = len(yesterday_orders)
-        orders_change = ((today_count - yesterday_count) / yesterday_count * 100) if yesterday_count > 0 else (100 if today_count > 0 else 0)
-
-        # Trouver le meilleur produit
         best_product = 'N/A'
         if today_orders:
             product_sales = {}
             for order in today_orders:
-                product_name = order.recipe.name if order.recipe else 'Unknown'
-                product_sales[product_name] = product_sales.get(product_name, 0) + order.quantity
+                p_name = order.recipe.name if order.recipe else 'Unknown'
+                product_sales[p_name] = product_sales.get(p_name, 0) + order.quantity
             best_product = max(product_sales, key=product_sales.get)
 
         return jsonify({
-            'revenue': round(today_revenue, 2),
-            'revenue_change': round(revenue_change, 2),
-            'profit': round(today_profit, 2),
-            'profit_change': round(profit_change, 2),
-            'orders_count': today_count,
-            'orders_change': round(orders_change, 2),
+            'revenue_today': round(revenue_today, 2),
+            'revenue_yesterday': round(revenue_yesterday, 2),
+            'profit_today': round(profit_today, 2),
+            'profit_yesterday': round(profit_yesterday, 2),
+            'orders_today': len(today_orders),
+            'orders_yesterday': len(yesterday_orders),
             'best_product': best_product
         }), 200
     except Exception as e:
-        print(f"Error calculating stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/dashboard/recent-orders', methods=['GET'])
+def recent_orders_api():
+    """Récupérer les commandes récentes formatées pour le dashboard"""
+    try:
+        orders = Order.query.order_by(Order.order_date.desc()).limit(5).all()
+        formatted = []
+        for o in orders:
+            formatted.append({
+                'id': o.id,
+                'date': o.order_date.strftime('%d/%m/%Y'),
+                'client': o.customer_name,
+                'product': o.recipe.name if o.recipe else 'Unknown',
+                'total': o.total_price,
+                'status': o.status
+            })
+        return jsonify({'orders': formatted}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/dashboard/revenue-trend', methods=['GET'])
+def revenue_trend_api():
+    """Tendance des revenus pour Chart.js"""
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=6)
+        results = db.session.query(
+            sa.func.date(Order.order_date).label('day'),
+            sa.func.sum(Order.total_price).label('revenue')
+        ).filter(Order.order_date >= start_date).group_by('day').order_by('day').all()
+
+        date_map = {str(r[0]): r[1] for r in results}
+        labels, data = [], []
+        for i in range(7):
+            day = start_date + timedelta(days=i)
+            day_str = day.strftime('%Y-%m-%d')
+            labels.append(day.strftime('%a'))
+            data.append(float(date_map.get(day_str, 0)))
+        return jsonify({'labels': labels, 'data': data}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/dashboard/top-products', methods=['GET'])
+def top_products_api():
+    """Top produits pour Chart.js"""
+    try:
+        results = db.session.query(
+            Recipe.name,
+            sa.func.sum(Order.quantity).label('sales')
+        ).join(Order, Recipe.id == Order.product_id).group_by(Recipe.name).order_by(sa.desc('sales')).limit(5).all()
+        return jsonify({
+            'labels': [r[0] for r in results],
+            'data': [float(r[1]) for r in results]
+        }), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/stats/daily', methods=['GET'])
@@ -524,6 +568,35 @@ def add_order():
         print(f"Error adding order: {e}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
+@api_bp.route('/orders/<int:order_id>', methods=['GET'])
+def get_order(order_id):
+    """Récupérer les détails d'une commande spécifique"""
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+
+        unit_price = order.total_price / order.quantity if order.quantity > 0 else 0
+
+        return jsonify({
+            'id': order.id,
+            'customer_name': order.customer_name,
+            'customer_phone': order.customer_phone or 'N/A',
+            'customer_address': order.customer_address or 'N/A',
+            'product_name': order.recipe.name if order.recipe else 'Unknown',
+            'product_id': order.product_id,
+            'quantity': order.quantity,
+            'unit_price': unit_price,
+            'total_price': order.total_price,
+            'delivery_mode': order.delivery_mode,
+            'delivery_date': order.delivery_date.strftime('%d/%m/%Y') if order.delivery_date else 'N/A',
+            'status': order.status,
+            'notes': order.notes or 'Aucune',
+            'order_date': order.order_date.strftime('%d/%m/%Y %H:%M')
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @api_bp.route('/orders/<int:order_id>', methods=['PUT'])
 @jwt_required()
 def update_order(order_id):
@@ -587,32 +660,68 @@ def delete_order(order_id):
 
 @api_bp.route('/orders/<int:order_id>/print', methods=['GET'])
 def print_order(order_id):
-    """Récupérer les données d'une commande pour l'impression"""
+    """Retourner un HTML pour l'impression du bon de commande"""
     try:
         order = Order.query.get(order_id)
         if not order:
-            return jsonify({'error': 'Order not found'}), 404
+            return "Commande non trouvée", 404
 
         unit_price = order.total_price / order.quantity if order.quantity > 0 else 0
 
-        print_data = {
-            'order_id': f"#{order.id}",
-            'order_date': order.order_date.strftime('%d/%m/%Y %H:%M:%S'),
-            'customer_name': order.customer_name,
-            'customer_phone': order.customer_phone or 'Non fourni',
-            'customer_address': order.customer_address or 'Non fourni',
-            'product_name': order.recipe.name if order.recipe else 'Produit inconnu',
-            'quantity': order.quantity,
-            'unit_price': f"{unit_price:.2f} DA",
-            'total_price': f"{order.total_price:.2f} DA",
-            'delivery_mode': order.delivery_mode,
-            'delivery_date': order.delivery_date.strftime('%d/%m/%Y') if order.delivery_date else 'Non spécifiée',
-            'status': order.status,
-            'notes': order.notes or 'Aucune'
-        }
-
-        return jsonify(print_data), 200
-
+        html = f"""
+        <html>
+        <head>
+            <title>Bon de Commande #{order.id}</title>
+            <style>
+                body {{ font-family: sans-serif; padding: 40px; line-height: 1.6; }}
+                .header {{ text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }}
+                .details {{ margin-top: 30px; }}
+                .table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                .table th, .table td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+                .table th {{ background-color: #f2 f2 f2; }}
+                .footer {{ margin-top: 50px; text-align: center; font-style: italic; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🎂 GESTION PÂTISSERIE ALGER</h1>
+                <p>BON DE COMMANDE #{order.id}</p>
+            </div>
+            <div class="details">
+                <p><strong>Date:</strong> {order.order_date.strftime('%d/%m/%Y %H:%M')}</p>
+                <p><strong>Client:</strong> {order.customer_name}</p>
+                <p><strong>Téléphone:</strong> {order.customer_phone or 'N/A'}</p>
+                <p><strong>Adresse:</strong> {order.customer_address or 'N/A'}</p>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Produit</th>
+                        <th>Quantité</th>
+                        <th>Prix Unitaire</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{order.recipe.name if order.recipe else 'Inconnu'}</td>
+                        <td>{order.quantity}</td>
+                        <td>{unit_price:.2f} DA</td>
+                        <td>{order.total_price:.2f} DA</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="details">
+                <p><strong>Mode Livraison:</strong> {order.delivery_mode}</p>
+                <p><strong>Date Livraison:</strong> {order.delivery_date.strftime('%d/%m/%Y') if order.delivery_date else 'N/A'}</p>
+                <p><strong>Notes:</strong> {order.notes or 'Aucune'}</p>
+            </div>
+            <div class="footer">
+                <p>Merci pour votre confiance ! / شكرا لثقتكم</p>
+            </div>
+        </body>
+        </html>
+        """
+        return html, 200
     except Exception as e:
-        print(f"Error fetching order for print: {e}")
-        return jsonify({'error': f'Server error: {str(e)}'}), 500
+        return str(e), 500

@@ -25,6 +25,11 @@ class Recipe(db.Model):
             'name': self.name,
             'ingredient_count': self.ingredient_count or 0,
             'selling_price': self.selling_price,
+            'material_cost': self.material_cost or 0,
+            'labor_cost': self.labor_cost or 0,
+            'packaging_cost': self.packaging_cost or 0,
+            'total_cost': self.total_cost or 0,
+            'profit_per_unit': self.profit_per_unit or 0,
             'profit_margin': self.profit_margin or 0,
             'ingredients': [ri.to_dict() for ri in self.ingredients]
         }

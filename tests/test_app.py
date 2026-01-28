@@ -154,3 +154,99 @@ def test_export_recipe_pdf_endpoint(client, admin_token):
     res = client.get(f'/api/export/recipe/{rid}/pdf')
     assert res.status_code == 200
     assert res.data.startswith(b'%PDF')
+
+def test_dashboard_api_endpoints(client, admin_token):
+    # Setup some data
+    res = client.post('/api/recipes', json={
+        "name": "Cake",
+        "selling_price": 1000,
+        "ingredients": []
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    rid = res.get_json()['id']
+
+    order_data = {
+        "customer_name": "Test Client",
+        "product_id": rid,
+        "quantity": 2,
+        "total_price": 2000,
+        "status": "Pending"
+    }
+    client.post('/api/orders', json=order_data, headers={"Authorization": f"Bearer {admin_token}"})
+
+    # Test stats
+    res = client.get('/api/dashboard/stats')
+    assert res.status_code == 200
+    data = res.get_json()
+    assert 'revenue_today' in data
+    assert data['revenue_today'] == 2000
+
+    # Test recent orders
+    res = client.get('/api/dashboard/recent-orders')
+    assert res.status_code == 200
+    data = res.get_json()
+    assert len(data['orders']) > 0
+
+    # Test revenue trend
+    res = client.get('/api/dashboard/revenue-trend')
+    assert res.status_code == 200
+    data = res.get_json()
+    assert len(data['labels']) == 7
+
+    # Test top products
+    res = client.get('/api/dashboard/top-products')
+    assert res.status_code == 200
+    data = res.get_json()
+    assert 'labels' in data
+
+    # Test single order GET
+    res = client.get(f'/api/orders/1')
+    assert res.status_code == 200
+    assert res.get_json()['customer_name'] == "Test Client"
+
+    # Test print order (HTML)
+    res = client.get(f'/api/orders/1/print')
+    assert res.status_code == 200
+    assert b"BON DE COMMANDE #1" in res.data
+
+def test_api_error_cases(client, admin_token):
+    # Non-existent recipe
+    res = client.get('/api/recipes/999')
+    assert res.status_code == 404
+
+    # Non-existent order
+    res = client.get('/api/orders/999')
+    assert res.status_code == 404
+
+    # Non-existent print
+    res = client.get('/api/orders/999/print')
+    assert res.status_code == 404
+
+    # Missing product in calculate
+    res = client.post('/api/calculate-product', json={})
+    assert res.status_code == 400
+
+    # Recipe with no name
+    res = client.post('/api/recipes', json={"selling_price": 100}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 400
+
+def test_unauthorized_actions(client):
+    # Try to delete order without token
+    res = client.delete('/api/orders/1')
+    assert res.status_code == 401
+
+    # Try to add recipe without token
+    res = client.post('/api/recipes', json={"name": "NoToken"})
+    assert res.status_code == 401
+
+def test_ingredient_deletion(client, admin_token):
+    res = client.post('/api/ingredients', json={"name": "DeleteMe"}, headers={"Authorization": f"Bearer {admin_token}"})
+    iid = res.get_json()['id']
+    res = client.delete(f'/api/ingredients/{iid}', headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+
+def test_recipe_update(client, admin_token):
+    res = client.post('/api/recipes', json={"name": "OldName", "selling_price": 100}, headers={"Authorization": f"Bearer {admin_token}"})
+    rid = res.get_json()['id']
+    res = client.put(f'/api/recipes/{rid}', json={"name": "NewName"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert client.get(f'/api/recipes/{rid}').get_json()['recipe']['name'] == "NewName"
