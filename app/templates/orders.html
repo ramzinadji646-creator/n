@@ -142,7 +142,8 @@
     async function loadRecipes() {
         const res = await fetch('/api/recipes');
         const data = await res.json();
-        recipes = data.recipes;
+        // 'data' est maintenant un array direct
+        recipes = data;
         const select = document.getElementById('productSelect');
         select.innerHTML = '<option value="">Sélectionner...</option>';
         recipes.forEach(r => {

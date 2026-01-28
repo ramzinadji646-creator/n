@@ -249,4 +249,81 @@ def test_recipe_update(client, admin_token):
     rid = res.get_json()['id']
     res = client.put(f'/api/recipes/{rid}', json={"name": "NewName"}, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 200
-    assert client.get(f'/api/recipes/{rid}').get_json()['recipe']['name'] == "NewName"
+    assert client.get(f'/api/recipes/{rid}').get_json()['name'] == "NewName"
+
+def test_ingredients_advanced(client, admin_token):
+    # Search
+    client.post('/api/ingredients', json={"name": "SearchMe"}, headers={"Authorization": f"Bearer {admin_token}"})
+    res = client.get('/api/ingredients?q=SearchMe')
+    assert len(res.get_json()['ingredients']) == 1
+
+    # Pagination
+    res = client.get('/api/ingredients?page=1&per_page=1')
+    assert len(res.get_json()['ingredients']) == 1
+
+    # Update
+    res = client.post('/api/ingredients', json={"name": "ToUpdate"}, headers={"Authorization": f"Bearer {admin_token}"})
+    iid = res.get_json()['id']
+    res = client.put(f'/api/ingredients/{iid}', json={"name": "UpdatedName", "price_per_pack": 500}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.get_json()['name'] == "UpdatedName"
+
+def test_recipe_advanced(client, admin_token):
+    # Search
+    client.post('/api/recipes', json={"name": "RecipeSearch", "selling_price": 100}, headers={"Authorization": f"Bearer {admin_token}"})
+    res = client.get('/api/recipes?q=RecipeSearch')
+    assert len(res.get_json()) >= 1
+
+    # Update with ingredients
+    ing_res = client.post('/api/ingredients', json={"name": "Ing1"}, headers={"Authorization": f"Bearer {admin_token}"})
+    iid = ing_res.get_json()['id']
+    rec_res = client.post('/api/recipes', json={"name": "RecUpdate", "selling_price": 200}, headers={"Authorization": f"Bearer {admin_token}"})
+    rid = rec_res.get_json()['id']
+
+    res = client.put(f'/api/recipes/{rid}', json={
+        "ingredients": [{"ingredient_id": iid, "quantity": 5}]
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+
+    # Delete
+    res = client.delete(f'/api/recipes/{rid}', headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+
+def test_stats_extended(client, admin_token):
+    client.get('/api/stats/weekly')
+    client.get('/api/stats/monthly')
+    client.get('/api/stats/top-products')
+    client.get('/api/stats/trends')
+
+def test_orders_advanced(client, admin_token):
+    # Need recipe
+    res = client.post('/api/recipes', json={"name": "OrderRec", "selling_price": 1000}, headers={"Authorization": f"Bearer {admin_token}"})
+    rid = res.get_json()['id']
+
+    # Post with delivery date and phone
+    payload = {
+        "customer_name": "Adv Client",
+        "customer_phone": "123456",
+        "product_id": rid,
+        "quantity": 3,
+        "delivery_date": "2026-01-01",
+        "notes": "Fast please"
+    }
+    res = client.post('/api/orders', json=payload, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 201
+    oid = res.get_json()['id']
+
+    # Put with notes and phone
+    res = client.put(f'/api/orders/{oid}', json={
+        "notes": "Changed note",
+        "customer_phone": "654321",
+        "delivery_date": "2026-02-02",
+        "quantity": 4,
+        "total_price": 4000
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.get_json()['order']['notes'] == "Changed note"
+
+def test_products_api(client):
+    res = client.get('/api/products')
+    assert res.status_code == 200

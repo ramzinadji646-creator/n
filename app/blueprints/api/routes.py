@@ -16,21 +16,26 @@ def health():
 # --- INGREDIENTS ---
 @api_bp.route('/ingredients', methods=['GET'])
 def get_ingredients():
-    query = request.args.get('q', '')
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    """Récupérer la liste des ingrédients avec pagination"""
+    try:
+        query = request.args.get('q', '')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
 
-    ing_query = Ingredient.query
-    if query:
-        ing_query = ing_query.filter(Ingredient.name.ilike(f'%{query}%'))
+        ing_query = Ingredient.query
+        if query:
+            ing_query = ing_query.filter(Ingredient.name.ilike(f'%{query}%'))
 
-    pagination = ing_query.paginate(page=page, per_page=per_page)
-    return jsonify({
-        "ingredients": [i.to_dict() for i in pagination.items],
-        "total": pagination.total,
-        "pages": pagination.pages,
-        "current_page": pagination.page
-    })
+        pagination = ing_query.paginate(page=page, per_page=per_page)
+        return jsonify({
+            "ingredients": [i.to_dict() for i in pagination.items],
+            "total": pagination.total,
+            "pages": pagination.pages,
+            "current_page": pagination.page
+        }), 200
+    except Exception as e:
+        print(f"Error fetching ingredients: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/ingredients', methods=['POST'])
 @admin_required()
@@ -74,23 +79,31 @@ def delete_ingredient(id):
 # --- RECIPES ---
 @api_bp.route('/recipes', methods=['GET'])
 def get_recipes():
-    query = request.args.get('q', '')
-    recipes_query = Recipe.query
-    if query:
-        recipes_query = recipes_query.filter(Recipe.name.ilike(f'%{query}%'))
+    """Récupérer la liste des recettes (Format Array pour le Frontend)"""
+    try:
+        query = request.args.get('q', '')
+        recipes_query = Recipe.query
+        if query:
+            recipes_query = recipes_query.filter(Recipe.name.ilike(f'%{query}%'))
 
-    recipes = recipes_query.all()
-    return jsonify({"recipes": [r.to_dict() for r in recipes]})
+        recipes = recipes_query.all()
+        # Retourner une liste directe au lieu d'un objet avec clé "recipes"
+        return jsonify([r.to_dict() for r in recipes]), 200
+    except Exception as e:
+        print(f"Error fetching recipes: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/recipes/<int:recipe_id>', methods=['GET'])
 def get_recipe(recipe_id):
-    """Récupérer les détails d'une recette"""
+    """Récupérer les détails d'une recette (Format Direct pour le Frontend)"""
     try:
         recipe = Recipe.query.get(recipe_id)
         if not recipe:
             return jsonify({'error': 'Recipe not found'}), 404
-        return jsonify({'recipe': recipe.to_dict()}), 200
+        # Retourner l'objet directement
+        return jsonify(recipe.to_dict()), 200
     except Exception as e:
+        print(f"Error fetching recipe {recipe_id}: {e}")
         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/recipes', methods=['POST'])
@@ -153,7 +166,6 @@ def create_recipe():
         print(f"Error creating recipe: {e}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
-@api_bp.route('/recipes/<int:id>', methods=['GET'])
 @api_bp.route('/recipes/<int:id>', methods=['PUT'])
 @admin_required()
 def update_recipe(id):
@@ -387,43 +399,52 @@ def top_products_api():
 
 @api_bp.route('/stats/daily', methods=['GET'])
 def daily_stats():
-    today = datetime.now().date()
-    start_of_day = datetime.combine(today, datetime.min.time())
+    try:
+        today = datetime.now().date()
+        start_of_day = datetime.combine(today, datetime.min.time())
 
-    orders = Order.query.filter(Order.order_date >= start_of_day).all()
-    revenue = sum(o.total_price for o in orders)
-    total_cost = 0
-    for o in orders:
-        total_cost += o.total_price * 0.7
+        orders = Order.query.filter(Order.order_date >= start_of_day).all()
+        revenue = sum(o.total_price for o in orders)
+        total_cost = 0
+        for o in orders:
+            total_cost += o.total_price * 0.7
 
-    profit = revenue - total_cost
+        profit = revenue - total_cost
 
-    return jsonify({
-        "revenue": round(revenue, 2),
-        "profit": round(profit, 2),
-        "orders_count": len(orders),
-        "lang": {"fr": "Aujourd'hui", "ar": "اليوم"}
-    })
+        return jsonify({
+            "revenue": round(revenue, 2),
+            "profit": round(profit, 2),
+            "orders_count": len(orders),
+            "lang": {"fr": "Aujourd'hui", "ar": "اليوم"}
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/stats/weekly', methods=['GET'])
 def weekly_stats():
-    last_week = datetime.now() - timedelta(days=7)
-    orders = Order.query.filter(Order.order_date >= last_week).all()
-    revenue = sum(o.total_price for o in orders)
-    return jsonify({
-        "revenue": round(revenue, 2),
-        "orders_count": len(orders)
-    })
+    try:
+        last_week = datetime.now() - timedelta(days=7)
+        orders = Order.query.filter(Order.order_date >= last_week).all()
+        revenue = sum(o.total_price for o in orders)
+        return jsonify({
+            "revenue": round(revenue, 2),
+            "orders_count": len(orders)
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/stats/monthly', methods=['GET'])
 def monthly_stats():
-    last_month = datetime.now() - timedelta(days=30)
-    orders = Order.query.filter(Order.order_date >= last_month).all()
-    revenue = sum(o.total_price for o in orders)
-    return jsonify({
-        "revenue": round(revenue, 2),
-        "orders_count": len(orders)
-    })
+    try:
+        last_month = datetime.now() - timedelta(days=30)
+        orders = Order.query.filter(Order.order_date >= last_month).all()
+        revenue = sum(o.total_price for o in orders)
+        return jsonify({
+            "revenue": round(revenue, 2),
+            "orders_count": len(orders)
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/stats/top-products', methods=['GET'])
 def top_products():
@@ -491,8 +512,13 @@ def export_recipe_pdf(id):
 # --- PRODUCTS ---
 @api_bp.route('/products', methods=['GET'])
 def get_products():
-    products = Product.query.all()
-    return jsonify([p.to_dict() for p in products])
+    """Récupérer la liste des produits"""
+    try:
+        products = Product.query.all()
+        return jsonify([p.to_dict() for p in products]), 200
+    except Exception as e:
+        print(f"Error fetching products: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # --- ORDERS ---
 @api_bp.route('/orders', methods=['GET'])

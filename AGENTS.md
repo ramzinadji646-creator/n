@@ -20,7 +20,7 @@
 ## Testing
 - **Framework**: `pytest`
 - **Command**: `pytest tests/ -v --cov`
-- **Quality Gate**: Minimum 85% coverage, 0 failures. (Current: 96%)
+- **Quality Gate**: Minimum 85% coverage, 0 failures. (Current: 88%)
 
 ## Data Format
 - Primary storage: SQLite (`app.db`).

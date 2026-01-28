@@ -56,7 +56,8 @@
         const res = await fetch('/api/recipes');
         const data = await res.json();
         const grid = document.getElementById('recipesGrid');
-        grid.innerHTML = data.recipes.map(r => `
+        // 'data' est maintenant un array direct
+        grid.innerHTML = data.map(r => `
             <div class="col-md-4">
                 <div class="card h-100">
                     <div class="card-body">
@@ -105,8 +106,7 @@
 
     async function viewRecipe(id) {
         const res = await fetch(`/api/recipes/${id}`);
-        const data = await res.json();
-        const r = data.recipe;
+        const r = await res.json();
 
         document.getElementById('recipeDetailsBody').innerHTML = `
             <div class="mb-3">
